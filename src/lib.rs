@@ -95,17 +95,14 @@ impl Contract for YamlContract {
             None => Vec::new(),
             Some(layout) => match documents.first() {
                 Some(document) => layout.check(document),
-                None => vec![ValidationIssue {
-                    code: "required".to_string(),
-                    message: "the Stream holds no document".to_string(),
-                    path: Some(String::new()),
-                }],
+                None => vec![ValidationIssue::at(
+                    "required",
+                    "the Stream holds no document",
+                    "",
+                )],
             },
         };
-        Ok(ValidationResult {
-            valid: issues.is_empty(),
-            issues,
-        })
+        Ok(ValidationResult::of(issues))
     }
 }
 
@@ -145,18 +142,11 @@ fn looks_like_yaml(text: &str) -> bool {
 
 fn malformed(error: &ScanError) -> ValidationResult {
     let marker = error.marker();
-    ValidationResult {
-        valid: false,
-        issues: vec![ValidationIssue {
-            code: "malformed".to_string(),
-            message: format!("not valid YAML: {}", error.info()),
-            path: Some(format!(
-                "line {} column {}",
-                marker.line(),
-                marker.col() + 1
-            )),
-        }],
-    }
+    ValidationResult::of(vec![ValidationIssue::at(
+        "malformed",
+        &format!("not valid YAML: {}", error.info()),
+        &format!("line {} column {}", marker.line(), marker.col() + 1),
+    )])
 }
 
 /// Loads the contract a Location names: `yaml` or an empty reference is the
@@ -205,15 +195,8 @@ pub fn first_document(stream: &Stream) -> Result<Option<Yaml>, ContractError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use contract::fixture::stream_as as stream;
     use xcore::StreamId;
-
-    fn stream(text: &str, media_type: Option<&str>) -> Stream {
-        Stream::new(
-            StreamId::new(1),
-            text.as_bytes().to_vec(),
-            media_type.map(str::to_string),
-        )
-    }
 
     fn service_layout() -> Layout {
         Layout::parse("service:\n  name: string\n  port: integer").expect("a layout")
