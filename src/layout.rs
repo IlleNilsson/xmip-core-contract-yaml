@@ -10,69 +10,43 @@
 //! layout does not name is not the layout's business.
 //!
 //! A type the layout does not know is refused when it is bound, not when a
-//! Stream arrives (ADR-0042).
+//! Stream arrives (ADR-0042). The seven types and the required key are the
+//! capability's, shared with the TOML layout (ADR-0044); what is YAML's is
+//! whether a YAML value is of a kind, and what YAML calls a value.
 
+pub use contract::layout::{Kind, Required};
 use contract::{ContractError, ValidationIssue};
 use yaml_rust2::{Yaml, YamlLoader};
 
-/// The seven types a layout may ask for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
-    String,
-    Integer,
-    Float,
-    Boolean,
-    Table,
-    Array,
-    Datetime,
+/// Whether `value` is of `kind`.
+#[must_use]
+pub fn holds(kind: Kind, value: &Yaml) -> bool {
+    match (kind, value) {
+        (Kind::String, Yaml::String(_))
+        | (Kind::Integer, Yaml::Integer(_))
+        | (Kind::Float, Yaml::Real(_))
+        | (Kind::Boolean, Yaml::Boolean(_))
+        | (Kind::Table, Yaml::Hash(_))
+        | (Kind::Array, Yaml::Array(_)) => true,
+        (Kind::Datetime, Yaml::String(text)) => is_timestamp(text),
+        _ => false,
+    }
 }
 
-impl Kind {
-    /// The type named in a layout, if the name is one of the seven.
-    #[must_use]
-    pub fn named(name: &str) -> Option<Self> {
-        Some(match name {
-            "string" => Self::String,
-            "integer" => Self::Integer,
-            "float" => Self::Float,
-            "boolean" => Self::Boolean,
-            "table" => Self::Table,
-            "array" => Self::Array,
-            "datetime" => Self::Datetime,
-            _ => return None,
-        })
-    }
-
-    /// Whether `value` is of this kind.
-    #[must_use]
-    pub fn holds(self, value: &Yaml) -> bool {
-        match (self, value) {
-            (Self::String, Yaml::String(_))
-            | (Self::Integer, Yaml::Integer(_))
-            | (Self::Float, Yaml::Real(_))
-            | (Self::Boolean, Yaml::Boolean(_))
-            | (Self::Table, Yaml::Hash(_))
-            | (Self::Array, Yaml::Array(_)) => true,
-            (Self::Datetime, Yaml::String(text)) => is_timestamp(text),
-            _ => false,
-        }
-    }
-
-    /// The name a layout would use for `value`.
-    #[must_use]
-    pub fn of(value: &Yaml) -> &'static str {
-        match value {
-            Yaml::String(text) if is_timestamp(text) => "datetime",
-            Yaml::String(_) => "string",
-            Yaml::Integer(_) => "integer",
-            Yaml::Real(_) => "float",
-            Yaml::Boolean(_) => "boolean",
-            Yaml::Hash(_) => "table",
-            Yaml::Array(_) => "array",
-            Yaml::Null => "null",
-            Yaml::Alias(_) => "alias",
-            Yaml::BadValue => "nothing",
-        }
+/// The name a layout would use for `value`.
+#[must_use]
+pub fn name_of(value: &Yaml) -> &'static str {
+    match value {
+        Yaml::String(text) if is_timestamp(text) => "datetime",
+        Yaml::String(_) => "string",
+        Yaml::Integer(_) => "integer",
+        Yaml::Real(_) => "float",
+        Yaml::Boolean(_) => "boolean",
+        Yaml::Hash(_) => "table",
+        Yaml::Array(_) => "array",
+        Yaml::Null => "null",
+        Yaml::Alias(_) => "alias",
+        Yaml::BadValue => "nothing",
     }
 }
 
@@ -93,13 +67,6 @@ fn is_timestamp(text: &str) -> bool {
         && matches!(bytes.get(10), None | Some(b'T' | b't' | b' '))
 }
 
-/// One key the layout requires: its dotted path and its type.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Required {
-    pub path: String,
-    pub kind: Kind,
-}
-
 /// The keys a bound layout requires, in the order the layout names them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Layout {
@@ -113,16 +80,16 @@ impl Layout {
     /// The layout is not YAML, is not a mapping, a leaf is not a type name,
     /// or a name is not one of the seven types.
     pub fn parse(text: &str) -> Result<Self, ContractError> {
-        let documents = YamlLoader::load_from_str(text).map_err(|error| ContractError {
-            message: format!("the layout is not YAML: {error}"),
-        })?;
+        let documents = YamlLoader::load_from_str(text)
+            .map_err(|error| ContractError::new(format!("the layout is not YAML: {error}")))?;
         let mut required = Vec::new();
         match documents.first() {
             Some(Yaml::Hash(_)) => collect(&documents[0], "", &mut required)?,
             Some(other) => {
-                return Err(ContractError {
-                    message: format!("the layout is {}; a layout is a mapping", Kind::of(other)),
-                });
+                return Err(ContractError::new(format!(
+                    "the layout is {}; a layout is a mapping",
+                    name_of(other)
+                )));
             }
             None => {}
         }
@@ -142,22 +109,10 @@ impl Layout {
         self.required
             .iter()
             .filter_map(|required| match lookup(document, &required.path) {
-                None => Some(ValidationIssue {
-                    code: "required".to_string(),
-                    message: format!("{} is required", required.path),
-                    path: Some(required.path.clone()),
-                }),
-                Some(value) if !required.kind.holds(value) => Some(ValidationIssue {
-                    code: "type".to_string(),
-                    message: format!(
-                        "{} is {}, the layout asks for {:?}",
-                        required.path,
-                        Kind::of(value),
-                        required.kind
-                    )
-                    .to_lowercase(),
-                    path: Some(required.path.clone()),
-                }),
+                None => Some(required.missing()),
+                Some(value) if !holds(required.kind, value) => {
+                    Some(required.mismatched(name_of(value)))
+                }
                 Some(_) => None,
             })
             .collect()
@@ -181,23 +136,9 @@ fn collect(mapping: &Yaml, prefix: &str, into: &mut Vec<Required>) -> Result<(),
             Yaml::Hash(_) => collect(value, &path, into)?,
             Yaml::String(name) => match Kind::named(name) {
                 Some(kind) => into.push(Required { path, kind }),
-                None => {
-                    return Err(ContractError {
-                        message: format!(
-                            "{path} asks for {name:?}; a layout type is string, integer, \
-                             float, boolean, table, array or datetime"
-                        ),
-                    });
-                }
+                None => return Err(Kind::unknown(&path, name)),
             },
-            other => {
-                return Err(ContractError {
-                    message: format!(
-                        "{path} is {}; a layout leaf names a type as a string",
-                        Kind::of(other)
-                    ),
-                });
-            }
+            other => return Err(Kind::not_a_name(&path, name_of(other))),
         }
     }
     Ok(())
@@ -278,5 +219,25 @@ mod tests {
         let issues = layout.check(&not_a_date);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].path.as_deref(), Some("started"));
+    }
+
+    #[test]
+    fn every_yaml_value_has_a_layout_name_and_holds_its_own_kind() {
+        let document = document("s: a\ni: 1\nf: 1.5\nb: true\nt: {}\na: []\nd: 2026-09-10\nn: ~");
+        for (key, name) in [
+            ("s", "string"),
+            ("i", "integer"),
+            ("f", "float"),
+            ("b", "boolean"),
+            ("t", "table"),
+            ("a", "array"),
+            ("d", "datetime"),
+        ] {
+            let value = &document[key];
+            assert_eq!(name_of(value), name);
+            assert!(holds(Kind::named(name).expect("kind"), value), "{name}");
+        }
+        assert_eq!(name_of(&document["n"]), "null");
+        assert!(!holds(Kind::String, &document["i"]));
     }
 }
