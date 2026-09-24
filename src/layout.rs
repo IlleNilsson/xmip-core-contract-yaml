@@ -15,7 +15,7 @@
 //! whether a YAML value is of a kind, and what YAML calls a value.
 
 pub use contract::layout::{Kind, Required};
-use contract::{ContractError, ValidationIssue};
+use sdk::contract::{ContractError, ValidationIssue};
 use yaml_rust2::{Yaml, YamlLoader};
 
 /// Whether `value` is of `kind`.
