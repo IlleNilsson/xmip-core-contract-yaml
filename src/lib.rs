@@ -81,11 +81,11 @@ impl Contract for YamlContract {
         if let Some(media_type) = stream.media_type() {
             return Ok(is_yaml_media_type(media_type));
         }
-        Ok(std::str::from_utf8(stream.bytes()).is_ok_and(looks_like_yaml))
+        Ok(stream.text().is_ok_and(looks_like_yaml))
     }
 
     fn validate(&self, stream: &Stream) -> Result<ValidationResult, ContractError> {
-        let text = std::str::from_utf8(stream.bytes()).map_err(|error| ContractError {
+        let text = stream.text().map_err(|error| ContractError {
             message: format!("not UTF-8 text: {error}"),
         })?;
         let documents = match YamlLoader::load_from_str(text) {
@@ -145,8 +145,8 @@ fn malformed(error: &ScanError) -> ValidationResult {
     let marker = error.marker();
     ValidationResult::of(vec![ValidationIssue::at(
         "malformed",
-        &format!("not valid YAML: {}", error.info()),
-        &format!("line {} column {}", marker.line(), marker.col() + 1),
+        format!("not valid YAML: {}", error.info()),
+        format!("line {} column {}", marker.line(), marker.col() + 1),
     )])
 }
 
@@ -200,7 +200,7 @@ const SETTINGS: &Settings = &Settings {
 /// # Errors
 /// The Stream is not UTF-8 or not YAML.
 pub fn first_document(stream: &Stream) -> Result<Option<Yaml>, ContractError> {
-    let text = std::str::from_utf8(stream.bytes()).map_err(|error| ContractError {
+    let text = stream.text().map_err(|error| ContractError {
         message: format!("not UTF-8 text: {error}"),
     })?;
     let documents = YamlLoader::load_from_str(text).map_err(|error| ContractError {
@@ -267,7 +267,7 @@ mod tests {
         let codes: Vec<(&str, Option<&str>)> = departed
             .issues
             .iter()
-            .map(|issue| (issue.code.as_str(), issue.path.as_deref()))
+            .map(|issue| (issue.code.as_ref(), issue.path.as_deref()))
             .collect();
         assert_eq!(
             codes,
