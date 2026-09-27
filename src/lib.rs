@@ -20,6 +20,7 @@ use contract::{
 };
 use layout::Layout;
 use stream::Stream;
+use xcore::settings::{Applies, Kind, Presence, Setting, Settings};
 use yaml_rust2::{ScanError, Yaml, YamlLoader};
 
 const REPRESENTATION: &str = "application/yaml";
@@ -158,6 +159,10 @@ impl ContractFactory for YamlFactory {
         "yaml"
     }
 
+    fn settings(&self) -> &'static Settings {
+        SETTINGS
+    }
+
     fn load(&self, reference: &str) -> Result<Box<dyn Contract>, ContractError> {
         let reference = reference.trim();
         if reference.is_empty() || reference == self.technology() {
@@ -176,6 +181,18 @@ impl ContractFactory for YamlFactory {
         Ok(Box::new(YamlContract::with_layout(name, layout)))
     }
 }
+
+/// What a Location gives this contract (ADR-0064, amendment 2026-09-26).
+const SETTINGS: &Settings = &Settings {
+    technology: env!("CARGO_PKG_NAME"),
+    settings: &[Setting {
+        name: "reference",
+        kind: Kind::Address,
+        presence: Presence::Optional,
+        meaning: "The path of the layout documents are held to; left out, any YAML holds.",
+        applies: Applies::Both,
+    }],
+};
 
 /// The first document of a well-formed Stream, for callers that want the
 /// value and not only the verdict.
@@ -315,5 +332,38 @@ mod tests {
         assert_eq!(first.expect("a document")["a"].as_i64(), Some(1));
         assert!(first_document(&stream("", None)).expect("yaml").is_none());
         assert!(first_document(&stream("a: [", None)).is_err());
+    }
+
+    #[test]
+    fn yaml_declares_its_settings_and_reads_through_them() {
+        assert!(SETTINGS.problems().is_empty(), "{:?}", SETTINGS.problems());
+        let given = |name: &str, value: &str| {
+            (
+                name.to_string(),
+                xcore::settings::Given::Text(value.to_string()),
+            )
+        };
+        assert!(YamlFactory.open(Applies::Both, &[]).is_ok(), "bare");
+        let unread = YamlFactory
+            .open(
+                Applies::Receive,
+                &[given("reference", "/no/such/service.yaml")],
+            )
+            .err()
+            .expect("an unread file is refused");
+        assert!(
+            unread.message.contains("/no/such/service.yaml"),
+            "{}",
+            unread.message
+        );
+        let refused = YamlFactory
+            .open(Applies::Send, &[given("unheard_of", "x")])
+            .err()
+            .expect("an unknown setting is refused");
+        assert!(
+            refused.message.contains("unheard_of"),
+            "{}",
+            refused.message
+        );
     }
 }
