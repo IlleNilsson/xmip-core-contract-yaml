@@ -184,7 +184,7 @@ mod tests {
                 ("modules", Kind::Array)
             ]
         );
-        assert!(Layout::parse("").expect("empty").required().is_empty());
+        assert_eq!(Layout::parse("").expect("empty").required(), []);
     }
 
     #[test]
