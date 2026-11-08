@@ -25,6 +25,9 @@ stream = { package = "xmip-core-stream", git = "https://github.com/IlleNilsson/x
 # The one real parser. Well-formedness is a genuine parse, and a scan error
 # carries the line and column of where it stopped.
 yaml-rust2 = "0.13"
+# The estate's one depth cap (`codec::depth`), which the alias and node
+# budget holds a document's nesting to.
+codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
 
 [dev-dependencies]
 # The parent's Stream fixture, for the tests only (ADR-0044).
