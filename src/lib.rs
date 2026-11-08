@@ -84,11 +84,11 @@ impl Contract for YamlContract {
         if let Some(media_type) = stream.media_type() {
             return Ok(is_yaml_media_type(media_type));
         }
-        Ok(stream.text().is_ok_and(looks_like_yaml))
+        Ok(contract::text(stream)?.is_ok_and(looks_like_yaml))
     }
 
     fn validate(&self, stream: &Stream) -> Result<ValidationResult, ContractError> {
-        let text = stream.text().map_err(|error| ContractError {
+        let text = contract::text(stream)?.map_err(|error| ContractError {
             message: format!("not UTF-8 text: {error}"),
         })?;
         let documents = match budget::load(text) {
@@ -203,7 +203,7 @@ const SETTINGS: &Settings = &Settings {
 /// # Errors
 /// The Stream is not UTF-8 or not YAML.
 pub fn first_document(stream: &Stream) -> Result<Option<Yaml>, ContractError> {
-    let text = stream.text().map_err(|error| ContractError {
+    let text = contract::text(stream)?.map_err(|error| ContractError {
         message: format!("not UTF-8 text: {error}"),
     })?;
     let documents = budget::load(text).map_err(|error| ContractError {
