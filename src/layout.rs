@@ -16,7 +16,7 @@
 
 use contract::layout::{Kind, Required};
 use contract::{ContractError, ValidationIssue};
-use yaml_rust2::{Yaml, YamlLoader};
+use yaml_rust2::Yaml;
 
 /// Whether `value` is of `kind`.
 #[must_use]
@@ -80,7 +80,7 @@ impl Layout {
     /// The layout is not YAML, is not a mapping, a leaf is not a type name,
     /// or a name is not one of the seven types.
     pub fn parse(text: &str) -> Result<Self, ContractError> {
-        let documents = YamlLoader::load_from_str(text)
+        let documents = crate::budget::load(text)
             .map_err(|error| ContractError::new(format!("the layout is not YAML: {error}")))?;
         let mut required = Vec::new();
         match documents.first() {
@@ -160,7 +160,7 @@ mod tests {
     use super::*;
 
     fn document(text: &str) -> Yaml {
-        YamlLoader::load_from_str(text)
+        crate::budget::load(text)
             .expect("yaml")
             .into_iter()
             .next()

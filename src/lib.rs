@@ -11,7 +11,10 @@
 //! The layout language is the one the TOML contract reads, written in YAML,
 //! and [`layout`] documents it. A Stream may carry several documents; every
 //! one must be well-formed, and the first is the one a layout is held to.
+//! Every text is held to [`budget`] before it is built: what its aliases
+//! copy, and how deep it nests.
 
+pub mod budget;
 pub mod layout;
 
 use contract::{
@@ -21,7 +24,7 @@ use contract::{
 use layout::Layout;
 use stream::Stream;
 use xcore::settings::{Applies, Kind, Presence, Setting, Settings};
-use yaml_rust2::{ScanError, Yaml, YamlLoader};
+use yaml_rust2::{ScanError, Yaml};
 
 const REPRESENTATION: &str = "application/yaml";
 
@@ -88,7 +91,7 @@ impl Contract for YamlContract {
         let text = stream.text().map_err(|error| ContractError {
             message: format!("not UTF-8 text: {error}"),
         })?;
-        let documents = match YamlLoader::load_from_str(text) {
+        let documents = match budget::load(text) {
             Ok(documents) => documents,
             Err(error) => return Ok(malformed(&error)),
         };
@@ -203,7 +206,7 @@ pub fn first_document(stream: &Stream) -> Result<Option<Yaml>, ContractError> {
     let text = stream.text().map_err(|error| ContractError {
         message: format!("not UTF-8 text: {error}"),
     })?;
-    let documents = YamlLoader::load_from_str(text).map_err(|error| ContractError {
+    let documents = budget::load(text).map_err(|error| ContractError {
         message: format!("not valid YAML: {error}"),
     })?;
     Ok(documents.into_iter().next())
