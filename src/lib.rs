@@ -309,8 +309,7 @@ mod tests {
             factory.load("yaml").expect("bare").descriptor().id.0,
             "yaml"
         );
-        let dir = std::env::temp_dir().join("xmip-contract-yaml-test");
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = file::temporary::Folder::new("contract-yaml");
         let file = dir.join("service.layout.yaml");
         std::fs::write(&file, "service:\n  name: string").expect("write layout");
         let bound = factory.load(file.to_str().expect("path")).expect("bound");
