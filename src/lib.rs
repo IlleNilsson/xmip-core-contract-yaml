@@ -13,27 +13,46 @@
 //! one must be well-formed, and the first is the one a layout is held to.
 //! Every text is held to [`budget`] before it is built: what its aliases
 //! copy, and how deep it nests.
+//!
+//! **Built with its `declaration` feature alone** the crate is
+//! [`declaration`], what a Location naming it is configured with and the
+//! name a Validate step names it by, and none of the code above, which is
+//! behind the default feature: what the surfaces' library carries (ADR-0064,
+//! amendment 2026-11-26).
 
+#[cfg(feature = "declaration")]
+pub mod declaration;
+
+#[cfg(feature = "default")]
 pub mod budget;
+#[cfg(feature = "default")]
 pub mod layout;
 
+#[cfg(feature = "default")]
 use contract::{
     Contract, ContractDescriptor, ContractError, ContractFactory, ContractId, ValidationIssue,
     ValidationResult,
 };
+#[cfg(feature = "default")]
 use layout::Layout;
+#[cfg(feature = "default")]
 use stream::Stream;
-use xcore::settings::{Applies, Kind, Presence, Setting, Settings};
+#[cfg(feature = "default")]
+use xcore::settings::Settings;
+#[cfg(feature = "default")]
 use yaml_rust2::{ScanError, Yaml};
 
+#[cfg(feature = "default")]
 const REPRESENTATION: &str = "application/yaml";
 
 /// The YAML contract, bare or bound to a layout.
+#[cfg(feature = "default")]
 pub struct YamlContract {
     descriptor: ContractDescriptor,
     layout: Option<Layout>,
 }
 
+#[cfg(feature = "default")]
 impl YamlContract {
     /// Well-formedness only.
     #[must_use]
@@ -61,12 +80,14 @@ impl YamlContract {
     }
 }
 
+#[cfg(feature = "default")]
 impl Default for YamlContract {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "default")]
 fn descriptor(id: &str) -> ContractDescriptor {
     ContractDescriptor {
         id: ContractId(id.to_string()),
@@ -75,6 +96,7 @@ fn descriptor(id: &str) -> ContractDescriptor {
     }
 }
 
+#[cfg(feature = "default")]
 impl Contract for YamlContract {
     fn descriptor(&self) -> &ContractDescriptor {
         &self.descriptor
@@ -110,6 +132,7 @@ impl Contract for YamlContract {
     }
 }
 
+#[cfg(feature = "default")]
 fn is_yaml_media_type(media_type: &str) -> bool {
     let essence = media_type.split(';').next().unwrap_or("").trim();
     ["application/yaml", "application/x-yaml", "text/yaml"]
@@ -120,6 +143,7 @@ fn is_yaml_media_type(media_type: &str) -> bool {
 
 /// The first line that is neither blank nor a comment is a document marker,
 /// a directive, a sequence item, or a `key: value` with a YAML-shaped key.
+#[cfg(feature = "default")]
 fn looks_like_yaml(text: &str) -> bool {
     let Some(line) = text
         .lines()
@@ -144,6 +168,7 @@ fn looks_like_yaml(text: &str) -> bool {
     })
 }
 
+#[cfg(feature = "default")]
 fn malformed(error: &ScanError) -> ValidationResult {
     let marker = error.marker();
     ValidationResult::of(vec![ValidationIssue::at(
@@ -155,15 +180,17 @@ fn malformed(error: &ScanError) -> ValidationResult {
 
 /// Loads the contract a Location names: `yaml` or an empty reference is the
 /// bare contract, anything else is the path of a layout file.
+#[cfg(feature = "default")]
 pub struct YamlFactory;
 
+#[cfg(feature = "default")]
 impl ContractFactory for YamlFactory {
     fn technology(&self) -> &'static str {
-        "yaml"
+        declaration::NAME
     }
 
     fn settings(&self) -> &'static Settings {
-        SETTINGS
+        declaration::SETTINGS
     }
 
     fn load(&self, reference: &str) -> Result<Box<dyn Contract>, ContractError> {
@@ -185,23 +212,12 @@ impl ContractFactory for YamlFactory {
     }
 }
 
-/// What a Location gives this contract (ADR-0064, amendment 2026-09-26).
-const SETTINGS: &Settings = &Settings {
-    technology: env!("CARGO_PKG_NAME"),
-    settings: &[Setting {
-        name: "reference",
-        kind: Kind::Address,
-        presence: Presence::Optional,
-        meaning: "The path of the layout documents are held to; left out, any YAML holds.",
-        applies: Applies::Both,
-    }],
-};
-
 /// The first document of a well-formed Stream, for callers that want the
 /// value and not only the verdict.
 ///
 /// # Errors
 /// The Stream is not UTF-8 or not YAML.
+#[cfg(feature = "default")]
 pub fn first_document(stream: &Stream) -> Result<Option<Yaml>, ContractError> {
     let text = contract::text(stream)?.map_err(|error| ContractError {
         message: format!("not UTF-8 text: {error}"),
@@ -338,6 +354,8 @@ mod tests {
 
     #[test]
     fn yaml_declares_its_settings_and_reads_through_them() {
+        use declaration::SETTINGS;
+        use xcore::settings::Applies;
         assert!(SETTINGS.problems().is_empty(), "{:?}", SETTINGS.problems());
         let given = |name: &str, value: &str| {
             (
